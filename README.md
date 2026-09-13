@@ -1,6 +1,106 @@
 # 下一代Agent代码审计
 简短的来说，我不太喜欢现在开源的大部分的"代码审计"系统的复杂性和花里胡哨的UI.因此我开发了这套代码审计agent系统并且用于测评我的QWEN-EXO项目 
 
+## 功能总览
+
+这是一个面向大型代码库的终端 AI 代码审计 Agent。它把一次审计拆成侦察、审计、独立验证和团队汇总几个阶段，由多个 Agent 共享有限的论坛、证据和待办状态。
+
+- 支持 OpenAI 兼容接口，包括 Responses API 和 Chat Completions API。
+- 支持本地目录审计、Git 信息查看、文件列表、关键词搜索和上下文读取。
+- 支持多 Agent 并行侦察和审计，自动追踪变量传播、跨文件调用链、权限边界和危险 sink。
+- 支持候选漏洞去重、独立验证、证据分级、报告查看和 JSON 导出。
+- 支持论坛式 Agent 协作、定向回复、管理员消息、会话保存和断点恢复。
+- 支持普通模式与无限审计模式，并可设置时间或 token 预算。
+- 技能目录自动发现，按项目语言按需加载 Java、PHP、.NET 和证据审计规范。
+
+## 快速安装
+
+### Windows
+
+要求：Go 1.20 或更高版本，以及一个 OpenAI 兼容模型接口。
+
+```powershell
+git clone https://github.com/xhm18649/code_review_agent.git
+cd code_review_agent
+go mod download
+Copy-Item config.yaml config.local.yaml
+notepad config.local.yaml
+go build -o code-review-agent.exe .
+.\code-review-agent.exe -config config.local.yaml -dir "C:\path\to\project"
+```
+
+在 `config.local.yaml` 中设置 `openai.base_url`、`openai.api_key`、`openai.model`。更推荐使用环境变量，避免把密钥写入配置文件：
+
+```yaml
+openai:
+  api_key_env: OPENAI_API_KEY
+```
+
+```powershell
+$env:OPENAI_API_KEY = "your-api-key"
+.\code-review-agent.exe -config config.local.yaml -dir "C:\path\to\project"
+```
+
+### Linux/macOS
+
+```bash
+git clone https://github.com/xhm18649/code_review_agent.git
+cd code_review_agent
+go mod download
+cp config.yaml config.local.yaml
+$EDITOR config.local.yaml
+go build -o code-review-agent .
+./code-review-agent -config config.local.yaml -dir /path/to/project
+```
+
+## 让 AI 自动安装
+
+可以把下面的指令完整发送给支持终端操作的 AI 编程助手。它会自动检查环境、克隆仓库、安装依赖、生成本地配置、编译并进行一次测试启动检查。不要把真实 API 密钥写进 Git 仓库。
+
+```text
+请在当前机器安装并验证 https://github.com/xhm18649/code_review_agent：
+1. 检查 git、Go 1.20+ 是否可用；缺少时安装或明确报告缺失项。
+2. 将仓库克隆到当前工作目录；如果目录已存在，先检查 git status，不要覆盖用户未提交的修改。
+3. 复制 config.yaml 为 config.local.yaml，仅修改必要的模型接口配置，API 密钥优先使用环境变量 OPENAI_API_KEY，不要打印或提交密钥。
+4. 执行 go mod download、gofmt -w、go test ./... 和 go build -o code-review-agent .。
+5. 检查 skills/php-security、skills/dotnet-security、skills/evidence-ledger 是否存在，并确认 README 已说明它们的用途。
+6. 最后给出实际安装目录、启动命令、测试结果和仍需用户填写的配置；不要执行未授权的目标代码、网络探测或漏洞利用。
+```
+
+## 基本使用
+
+启动后输入项目目录即可开始审计。常用命令：
+
+| 命令 | 作用 |
+| --- | --- |
+| `/help` | 查看完整操作帮助 |
+| `/agents` | 查看 Agent 状态、阶段和当前工作 |
+| `/files [页码]` | 查看项目文件清单 |
+| `/list [页码]` | 查看候选漏洞列表并打开详情 |
+| `/report` | 查看当前审计报告 |
+| `/export [文件]` | 导出完整 JSON 报告，默认 `report.json` |
+| `/save [文件]` | 保存当前会话 |
+| `/sessions` | 选择已保存会话 |
+| `/restore [文件或片段]` | 恢复会话并继续审计 |
+| `/budget` | 设置普通/无限模式及时间、token 预算 |
+| `/forum [页码]` | 浏览 Agent 协作论坛 |
+| `/search <关键词>` | 搜索论坛帖子和回复 |
+
+审计只应针对获得授权的源码、依赖和测试环境。工具输出是分析证据，不等于已经确认漏洞；最终结论需要结合源码链路、配置和运行时验证。
+
+## 增加的 4 个文件有什么不同
+
+本版本相对原项目增加了 4 个文件：
+
+| 文件 | 增加内容 | 实际效果 |
+| --- | --- | --- |
+| `skills/php-security/SKILL.md` | PHP、Composer、CMS、插件和主题专项审计规范 | 遇到 PHP 项目时，Agent 会重点检查上传、路径、XSS、SSRF、CSRF、反序列化、插件权限和运行时边界，并要求闭合 source 到 sink 的证据链。 |
+| `skills/dotnet-security/SKILL.md` | C#、ASP.NET、Minimal API、Worker 和 DLL 审计规范 | 遇到 .NET 项目时，Agent 会覆盖路由绑定、授权、SQL、反序列化、命令执行、文件上传、JWT 和业务逻辑，并区分源码审计与只有 DLL 的限制。 |
+| `skills/evidence-ledger/SKILL.md` | 统一证据账本和结论状态 | 多个 Agent 或外部报告结论不再直接混用；每条候选都要记录入口、传播、检查、sink、影响和反证，并使用 `confirmed` 等状态。 |
+| `internal/prompt/prompt_test.go` | 技能目录自动发现与排序测试 | 防止新增技能目录没有 `SKILL.md`、加载顺序不稳定或后续重构破坏技能发现机制。 |
+
+这 4 个文件不会改变核心 Agent 的并发模型和终端界面，但会让 PHP/.NET 项目获得语言专项审计能力，让跨 Agent 结论更可核验，并为技能扩展提供自动化测试保护。
+
 >《qwen-exo - 让 Qwen 在长任务里真正记住知识、反思错误，并跑得足够快》
 https://github.com/huoji120/QWEN-EXO-booster
 
