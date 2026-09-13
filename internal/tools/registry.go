@@ -163,6 +163,30 @@ func (r *Registry) SetWorkspace(workspace string) error {
 }
 
 func (r *Registry) Workspace() string { return r.workspace }
+
+// SecurityLanguages reports languages that are actually present in the current
+// inventory. It is used by the coordinator to assign language-specific agents.
+func (r *Registry) SecurityLanguages() []string {
+	if r == nil {
+		return nil
+	}
+	found := map[string]bool{}
+	for _, item := range r.inventory {
+		switch item.Ext {
+		case ".php", ".phtml", ".inc", ".module":
+			found["php-security"] = true
+		case ".cs", ".csproj", ".cshtml", ".razor", ".aspx", ".ascx", ".ashx", ".asmx", ".vb", ".fs":
+			found["dotnet-security"] = true
+		}
+	}
+	out := make([]string, 0, len(found))
+	for _, name := range []string{"dotnet-security", "php-security"} {
+		if found[name] {
+			out = append(out, name)
+		}
+	}
+	return out
+}
 func cleanWorkspace(workspace string) (string, error) {
 	if workspace == "" {
 		workspace = "."

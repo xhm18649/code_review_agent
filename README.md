@@ -11,7 +11,7 @@
 - 支持候选漏洞去重、独立验证、证据分级、报告查看和 JSON 导出。
 - 支持论坛式 Agent 协作、定向回复、管理员消息、会话保存和断点恢复。
 - 支持普通模式与无限审计模式，并可设置时间或 token 预算。
-- 技能目录自动发现，按项目语言按需加载 Java、PHP、.NET 和证据审计规范。
+- 技能目录自动发现；审计阶段会根据项目文件类型自动安排 PHP/.NET 专项 Agent 并加载对应规范。
 
 ## 快速安装
 
@@ -88,14 +88,26 @@ go build -o code-review-agent .
 
 审计只应针对获得授权的源码、依赖和测试环境。工具输出是分析证据，不等于已经确认漏洞；最终结论需要结合源码链路、配置和运行时验证。
 
+## PHP/.NET 专项 Agent 调度
+
+项目启动时会先建立文件 inventory。进入正式审计阶段后，协调器会根据实际扩展名识别专项范围：
+
+- 检测到 `.php`、`.phtml`、`.inc` 或 `.module` 时，自动安排 `php-security` 专项 Agent。
+- 检测到 `.cs`、`.csproj`、`.cshtml`、`.razor`、`.aspx`、`.ascx`、`.ashx`、`.asmx`、`.vb` 或 `.fs` 时，自动安排 `dotnet-security` 专项 Agent。
+- PHP 和 .NET 同时存在时，专项 Agent 按轮询方式分配，确保两种语言都有独立审计成员；审计 Agent 数量超过语言数量时继续覆盖对应专项。
+- 专项 Agent 会在创建时预加载技能，并在任务分配中被要求执行完整清单、选择匹配文件、维护 todo、记录文件审计状态、追踪变量与跨文件 flow，并把证据发布到协作论坛。
+- 未检测到 PHP/.NET 文件时，不会强行加载无关技能；其他项目仍按原有通用审计和 Java/Web 技能流程运行。
+
+这意味着 PHP/.NET 技能现在不仅是可供模型自行选择的文档，而是由 Agent 调度器根据源码类型主动分配的审计职责。通过 `/agents` 可以查看专项 Agent 的状态和当前工作。
+
 ## 增加的 4 个文件有什么不同
 
 本版本相对原项目增加了 4 个文件：
 
 | 文件 | 增加内容 | 实际效果 |
 | --- | --- | --- |
-| `skills/php-security/SKILL.md` | PHP、Composer、CMS、插件和主题专项审计规范 | 遇到 PHP 项目时，Agent 会重点检查上传、路径、XSS、SSRF、CSRF、反序列化、插件权限和运行时边界，并要求闭合 source 到 sink 的证据链。 |
-| `skills/dotnet-security/SKILL.md` | C#、ASP.NET、Minimal API、Worker 和 DLL 审计规范 | 遇到 .NET 项目时，Agent 会覆盖路由绑定、授权、SQL、反序列化、命令执行、文件上传、JWT 和业务逻辑，并区分源码审计与只有 DLL 的限制。 |
+| `skills/php-security/SKILL.md` | PHP、Composer、CMS、插件和主题专项审计规范 | 遇到 PHP 项目时，调度器会为审计 Agent 自动加载它，重点检查上传、路径、XSS、SSRF、CSRF、反序列化、插件权限和运行时边界，并要求闭合 source 到 sink 的证据链。 |
+| `skills/dotnet-security/SKILL.md` | C#、ASP.NET、Minimal API、Worker 和 DLL 审计规范 | 遇到 .NET 项目时，调度器会为审计 Agent 自动加载它，覆盖路由绑定、授权、SQL、反序列化、命令执行、文件上传、JWT 和业务逻辑，并区分源码审计与只有 DLL 的限制。 |
 | `skills/evidence-ledger/SKILL.md` | 统一证据账本和结论状态 | 多个 Agent 或外部报告结论不再直接混用；每条候选都要记录入口、传播、检查、sink、影响和反证，并使用 `confirmed` 等状态。 |
 | `internal/prompt/prompt_test.go` | 技能目录自动发现与排序测试 | 防止新增技能目录没有 `SKILL.md`、加载顺序不稳定或后续重构破坏技能发现机制。 |
 

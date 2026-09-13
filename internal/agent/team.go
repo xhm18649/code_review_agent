@@ -372,6 +372,22 @@ func stageAssignment(stage string, count int) string {
 	return assignment
 }
 
+func (t *Team) securityAssignments(stage string, count int) []string {
+	if t == nil || stage != phaseAudit || count <= 0 || t.registry == nil {
+		return nil
+	}
+	languages := t.registry.SecurityLanguages()
+	if len(languages) == 0 {
+		return nil
+	}
+	assignments := make([]string, count)
+	for i := range assignments {
+		language := languages[i%len(languages)]
+		assignments[i] = language
+	}
+	return assignments
+}
+
 // Called only at a stage barrier, never while a worker is running.
 func (t *Team) createStageLocked(stage string) {
 	count := t.cfg.Agent.ReconAgents
@@ -379,12 +395,18 @@ func (t *Team) createStageLocked(stage string) {
 		count = t.cfg.Agent.AuditAgents
 	}
 	assignment := stageAssignment(stage, count)
+	specialists := t.securityAssignments(stage, count)
 	for i := 0; i < count; i++ {
 		id := fmt.Sprintf("%s-%d", stage, i+1)
 		a := newWorker(t.cfg, t.prompts, t.client, t.compressClient, t.registry.Fork(), id, stage, t.board)
 		a.userBroadcastSource = t.broadcastsAfter
 		a.onDisconnect = t.modelDisconnected
 		a.assignment = assignment
+		if i < len(specialists) && specialists[i] != "" {
+			if a.prompts.LoadSkill(specialists[i]) {
+				a.assignment += fmt.Sprintf("你是 %s 专项负责人：必须加载并执行该技能的完整检查清单，审计匹配文件并在 todo、文件排查和论坛中留下证据。", specialists[i])
+			}
+		}
 		if stage == phaseAudit {
 			a.handoff = t.handoff
 		}
