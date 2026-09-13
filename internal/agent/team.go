@@ -256,7 +256,7 @@ func (t *Team) stateEventLocked() Event {
 func (t *Team) emitState() { t.mu.Lock(); e := t.stateEventLocked(); t.mu.Unlock(); t.publish(e) }
 
 func (t *Team) capture(w *teamWorker, a *Agent) {
-	cp := workerSession{Status: WorkerStatus{ID: a.id, Phase: a.phase, Turn: a.turn}, Assignment: a.assignment, Messages: append([]llm.Message(nil), a.messages...), Skills: a.prompts.LoadedSkillNames(), Snapshot: cloneSnapshot(a.tools.Snapshot()), Plan: a.plan, TracePath: a.TracePath(), Completed: a.completed, ForumCursor: a.forumCursor, ForumPending: a.forumPending, AnnouncedName: a.announcedName}
+	cp := workerSession{Status: WorkerStatus{ID: a.id, Phase: a.phase, Turn: a.turn}, Assignment: a.assignment, SecuritySkill: securitySkillFromAssignment(a.assignment), Messages: append([]llm.Message(nil), a.messages...), Skills: a.prompts.LoadedSkillNames(), Snapshot: cloneSnapshot(a.tools.Snapshot()), Plan: a.plan, TracePath: a.TracePath(), Completed: a.completed, ForumCursor: a.forumCursor, ForumPending: a.forumPending, AnnouncedName: a.announcedName}
 	t.mu.Lock()
 	cp.Status.Name = a.board.Name(a.id)
 	cp.UserBroadcastCursor, cp.UserBroadcastDelivered = a.userBroadcastCursor, a.userBroadcastDelivered
@@ -388,6 +388,17 @@ func (t *Team) securityAssignments(stage string, count int) []string {
 	return assignments
 }
 
+func securityAssignment(skill string) string {
+	switch skill {
+	case "php-security":
+		return "你是 PHP 专项负责人：必须覆盖路由、AJAX、后台入口以及 $_GET、$_POST、Cookie、Header、JSON、上传等输入，追踪到 SQL、文件、include/require、eval、unserialize、ZipArchive、命令、SSRF、XSS、CSRF 和权限边界等危险 sink；使用 read_handoff、review_state、search_content、file_review_update、todo_create、variable_review_update、flow_review_update 和 verify_finding 留下可复核证据，发现一个问题后继续覆盖完整范围。"
+	case "dotnet-security":
+		return "你是 .NET 专项负责人：必须覆盖 Controller、Razor Page、Minimal API、Middleware、Hub、Authorize/JWT/Claim/IDOR、SQL（SqlCommand/FromSqlRaw）、Process.Start、IFormFile、Path.Combine、Json.NET 类型处理、业务逻辑和并发等危险 sink；使用 read_handoff、review_state、search_content、file_review_update、todo_create、variable_review_update、flow_review_update 和 verify_finding 留下可复核证据，发现一个问题后继续覆盖完整范围。"
+	default:
+		return ""
+	}
+}
+
 // Called only at a stage barrier, never while a worker is running.
 func (t *Team) createStageLocked(stage string) {
 	count := t.cfg.Agent.ReconAgents
@@ -404,13 +415,13 @@ func (t *Team) createStageLocked(stage string) {
 		a.assignment = assignment
 		if i < len(specialists) && specialists[i] != "" {
 			if a.prompts.LoadSkill(specialists[i]) {
-				a.assignment += fmt.Sprintf("你是 %s 专项负责人：必须加载并执行该技能的完整检查清单，审计匹配文件并在 todo、文件排查和论坛中留下证据。", specialists[i])
+				a.assignment += securityAssignment(specialists[i])
 			}
 		}
 		if stage == phaseAudit {
 			a.handoff = t.handoff
 		}
-		w := &teamWorker{agent: a, saved: workerSession{Status: WorkerStatus{ID: id, Name: t.board.Name(id), Phase: stage, Status: "pending"}, Assignment: a.assignment, Snapshot: cloneSnapshot(a.tools.Snapshot())}}
+		w := &teamWorker{agent: a, saved: workerSession{Status: WorkerStatus{ID: id, Name: t.board.Name(id), Phase: stage, Status: "pending"}, Assignment: a.assignment, SecuritySkill: securitySkillFromAssignment(a.assignment), Snapshot: cloneSnapshot(a.tools.Snapshot())}}
 		a.checkpoint = func(a *Agent) { t.capture(w, a) }
 		t.bindIRC(w)
 		t.workers = append(t.workers, w)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"code-review-agent/internal/forum"
@@ -17,6 +18,7 @@ type workerSession struct {
 	Assignment             string             `json:"assignment"`
 	Messages               []llm.Message      `json:"messages"`
 	Skills                 []string           `json:"skills,omitempty"`
+	SecuritySkill          string             `json:"security_skill,omitempty"`
 	TracePath              string             `json:"trace_path,omitempty"`
 	Snapshot               tools.Snapshot     `json:"snapshot"`
 	Plan                   *auditPlanDoneArgs `json:"plan,omitempty"`
@@ -27,6 +29,15 @@ type workerSession struct {
 	AnnouncedName          string             `json:"announced_name,omitempty"`
 	UserBroadcastCursor    int64              `json:"user_broadcast_cursor,omitempty"`
 	UserBroadcastDelivered int64              `json:"user_broadcast_delivered,omitempty"`
+}
+
+func securitySkillFromAssignment(assignment string) string {
+	for _, skill := range []string{"dotnet-security", "php-security"} {
+		if strings.Contains(assignment, skill) {
+			return skill
+		}
+	}
+	return ""
 }
 
 type teamSession struct {
@@ -348,7 +359,12 @@ func (t *Team) LoadSession(path string) error {
 		if saved.Status.Phase == phaseAudit {
 			count = s.AuditAgents
 		}
-		a.assignment = stageAssignment(saved.Status.Phase, count)
+		a.assignment = saved.Assignment
+		if saved.SecuritySkill != "" {
+			a.assignment = stageAssignment(saved.Status.Phase, count)
+		} else if a.assignment == "" {
+			a.assignment = stageAssignment(saved.Status.Phase, count)
+		}
 		saved.Assignment = a.assignment
 		a.turn = saved.Status.Turn
 		a.completed = saved.Completed
@@ -356,6 +372,22 @@ func (t *Team) LoadSession(path string) error {
 		a.forumCursor, a.forumPending = saved.ForumCursor, saved.ForumPending
 		saved.Status.Name = t.board.Name(saved.Status.ID)
 		a.tracePath = saved.TracePath
+		if saved.SecuritySkill != "" {
+			available := a.prompts.LoadSkill(saved.SecuritySkill)
+			if !available {
+				for _, loaded := range saved.Skills {
+					if loaded == saved.SecuritySkill {
+						available = true
+						break
+					}
+				}
+			}
+			if !available {
+				newRegistry.Close()
+				return fmt.Errorf("恢复 worker %s：缺少专项技能 %q", saved.Status.ID, saved.SecuritySkill)
+			}
+			a.assignment = strings.TrimSpace(a.assignment + " " + securityAssignment(saved.SecuritySkill))
+		}
 		a.prompts.SetLoadedSkills(saved.Skills)
 		a.tools.RestoreSnapshot(saved.Snapshot)
 		a.messages = append([]llm.Message(nil), saved.Messages...)
