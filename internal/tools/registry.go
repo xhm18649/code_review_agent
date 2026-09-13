@@ -172,10 +172,22 @@ func (r *Registry) SecurityLanguages() []string {
 	}
 	found := map[string]bool{}
 	for _, item := range r.inventory {
+		name := strings.ToLower(filepath.Base(item.Path))
 		switch item.Ext {
 		case ".php", ".phtml", ".inc", ".module":
 			found["php-security"] = true
 		case ".cs", ".csproj", ".cshtml", ".razor", ".aspx", ".ascx", ".ashx", ".asmx", ".vb", ".fs":
+			found["dotnet-security"] = true
+		}
+		// Project/configuration files are useful signals when source files are
+		// generated, excluded, or the workspace is a deployment artifact.
+		switch name {
+		case "composer.json", "composer.lock", "artisan", "wp-config.php":
+			found["php-security"] = true
+		case "web.config", "global.asax", "appsettings.json", "packages.config":
+			found["dotnet-security"] = true
+		}
+		if strings.HasSuffix(name, ".sln") || strings.HasSuffix(name, ".fsproj") || strings.HasSuffix(name, ".vbproj") {
 			found["dotnet-security"] = true
 		}
 	}

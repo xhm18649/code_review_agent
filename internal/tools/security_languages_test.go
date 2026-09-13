@@ -36,3 +36,19 @@ func TestSecurityLanguagesIgnoresUnrelatedFiles(t *testing.T) {
 		t.Fatalf("unrelated files selected security skills: %v", got)
 	}
 }
+
+func TestSecurityLanguagesDetectsProjectAndDeploymentMarkers(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"composer.json", "web.config", "App.sln", "settings.json"} {
+		if err := os.WriteFile(filepath.Join(root, name), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	registry, err := NewRegistry(root, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := registry.SecurityLanguages(); !reflect.DeepEqual(got, []string{"dotnet-security", "php-security"}) {
+		t.Fatalf("project/deployment markers were not detected: %v", got)
+	}
+}

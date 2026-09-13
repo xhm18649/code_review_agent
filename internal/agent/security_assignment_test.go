@@ -41,6 +41,11 @@ func TestAuditStageAssignsAndLoadsLanguageSpecialists(t *testing.T) {
 		if !containsText(worker.agent.assignment, want) {
 			t.Fatalf("worker %d assignment omitted %s: %q", i, want, worker.agent.assignment)
 		}
+		for _, action := range []string{"review_state", "search_content", "file_review_update", "todo_create", "verify_finding"} {
+			if !containsText(worker.agent.assignment, action) {
+				t.Fatalf("worker %d assignment omitted required action %s", i, action)
+			}
+		}
 	}
 }
 
