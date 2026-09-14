@@ -63,8 +63,8 @@ go build -o code-review-agent .
 2. 将仓库克隆到当前工作目录；如果目录已存在，先检查 git status，不要覆盖用户未提交的修改。
 3. 复制 config.yaml 为 config.local.yaml，仅修改必要的模型接口配置，API 密钥优先使用环境变量 OPENAI_API_KEY，不要打印或提交密钥。
 4. 执行 go mod download、gofmt -w、go test ./... 和 go build -o code-review-agent .。
-5. 检查 skills/php-security、skills/dotnet-security、skills/evidence-ledger 是否存在，并确认 README 已说明它们的用途。
-6. 最后给出实际安装目录、启动命令、测试结果和仍需用户填写的配置；不要执行未授权的目标代码、网络探测或漏洞利用。
+5. 检查 skills/php-security、skills/dotnet-security、skills/evidence-ledger and internal/prompt/prompt_test.go 是否存在，并确认 README 已说明它们的用途。 Also require go test ./... to cover discovery, PHP/.NET specialist scheduling, and session restore.
+6. 最后给出实际安装目录、启动命令、测试结果和仍需用户填写的配置；不要执行未授权的目标代码、网络探测或漏洞利用。 Static source review does not require local PHP/.NET runtimes; runtime validation requires authorization.
 ```
 
 ## 基本使用
@@ -92,11 +92,11 @@ go build -o code-review-agent .
 
 项目启动时会先建立文件 inventory。进入正式审计阶段后，协调器会根据实际扩展名识别专项范围：
 
-- 检测到 `.php`、`.phtml`、`.inc` 或 `.module` 时，自动安排 `php-security` 专项 Agent。
-- 检测到 `.cs`、`.csproj`、`.cshtml`、`.razor`、`.aspx`、`.ascx`、`.ashx`、`.asmx`、`.vb` 或 `.fs` 时，自动安排 `dotnet-security` 专项 Agent。
+- 检测到 `.php`、`.phtml`、`.inc` 或 `.module, composer.json, composer.lock, artisan, wp-config.php` 时，自动安排 `php-security` 专项 Agent。
+- 检测到 `.cs`、`.csproj`、`.cshtml`、`.razor`、`.aspx`、`.ascx`、`.ashx`、`.asmx`、`.vb` 或 `.fs, .sln, .fsproj, .vbproj, web.config, Global.asax, appsettings.json, packages.config` 时，自动安排 `dotnet-security` 专项 Agent。
 - PHP 和 .NET 同时存在时，专项 Agent 按轮询方式分配，确保两种语言都有独立审计成员；审计 Agent 数量超过语言数量时继续覆盖对应专项。
 - 专项 Agent 会在创建时预加载技能，并在任务分配中被要求执行完整清单、选择匹配文件、维护 todo、记录文件审计状态、追踪变量与跨文件 flow，并把证据发布到协作论坛。
-- 未检测到 PHP/.NET 文件时，不会强行加载无关技能；其他项目仍按原有通用审计和 Java/Web 技能流程运行。
+- 未检测到 PHP/.NET source or project markers 文件时，不会强行加载无关技能；其他项目仍按原有通用审计和 Java/Web 技能流程运行。
 
 这意味着 PHP/.NET 技能现在不仅是可供模型自行选择的文档，而是由 Agent 调度器根据源码类型主动分配的审计职责。通过 `/agents` 可以查看专项 Agent 的状态和当前工作。
 
@@ -111,7 +111,7 @@ go build -o code-review-agent .
 | `skills/evidence-ledger/SKILL.md` | 统一证据账本和结论状态 | 多个 Agent 或外部报告结论不再直接混用；每条候选都要记录入口、传播、检查、sink、影响和反证，并使用 `confirmed` 等状态。 |
 | `internal/prompt/prompt_test.go` | 技能目录自动发现与排序测试 | 防止新增技能目录没有 `SKILL.md`、加载顺序不稳定或后续重构破坏技能发现机制。 |
 
-这 4 个文件不会改变核心 Agent 的并发模型和终端界面，但会让 PHP/.NET 项目获得语言专项审计能力，让跨 Agent 结论更可核验，并为技能扩展提供自动化测试保护。
+这 4 个文件不会改变核心 Agent 的并发模型和终端界面，但会让 PHP/.NET 项目获得语言专项审计能力，让跨 Agent 结论更可核验，并为技能扩展提供自动化测试保护。 Specialist roles are also persisted and restored across sessions.
 
 >《qwen-exo - 让 Qwen 在长任务里真正记住知识、反思错误，并跑得足够快》
 https://github.com/huoji120/QWEN-EXO-booster
